@@ -82,13 +82,13 @@ in it is upstream's.
   injected into the process, and `config/config.js:5` then does `dotenv.config({path: './data/.env'})`
   (= `/app/data/.env`, ~44 keys) **without override** — so the stack `.env` wins wherever both define a key
   and `/app/data/.env` supplies the rest (that is where the setup wizard writes).
-- **Latent defect found 2026-10-16:** the effective `OLLAMA_MODEL` is `qwen3:8b` (from the stack `.env`),
-  while `/app/data/.env` names `qwen2.5-7b-128k:latest`. Verified from inside the container:
-  `GET http://ollama:11434/api/tags` lists `qwen3:14b-64k, qwen3:14b, deepseek-r1-7b-128k:latest,
-  deepseek-r1:7b, qwen2.5-7b-128k:latest, qwen2.5:7b` — **`qwen3:8b` is not there**, and the app has no
-  auto-pull. No analysis has run since (last scheduled scans end "Task completed" with nothing to
-  process), so this is latent, not yet a failure: the first document queued for analysis will hit
-  model-not-found. Fix is either `ollama pull qwen3:8b` or correcting the stack `.env`. Ask before changing it.
+- **Config now has one owner per layer — fixed 2026-10-16.** The stack `.env` holds deployment wiring
+  only (TZ, PAPERLESS_URL/NGX_URL/HOST, RAG_SERVICE_*, MULTI_SERVICE_ENABLED, with the rule written in
+  its header); everything the Settings UI writes lives in `/app/data/.env` alone. Effective config
+  before vs after: **51 keys, exactly one value changed** — `OLLAMA_MODEL` `qwen3:8b` →
+  `qwen2.5-7b-128k:latest`. Verified at the ollama layer with the app's own playground system prompt and
+  schema: valid JSON (title/correspondent/tags/document_type/document_date/language) in 4.3 s. No model
+  pull was needed. Rollback: `/root/backups/paperless-ai-{interface,data}.env_20261016_195154`.
 - Other effective env values (no secrets): `AI_PROVIDER=ollama`, `OLLAMA_API_URL=http://ollama:11434`,
   `TZ=America/New_York`, `PAPERLESS_API_URL=http://paperless-ngx:8000/api`,
   `RAG_SERVICE_URL=http://paperless-ngx:8000`, `RAG_SERVICE_ENABLED=true`, `MULTI_SERVICE_ENABLED=true`.
@@ -128,6 +128,9 @@ feature may make this component redundant.
   cross-repo search can find it.
 - 2026-10-16 — committed this `MEMORY.md` to the fork rather than gitignoring it, following the
   measured convention of this homelab's other forks.
+- 2026-10-16 — the stack `.env` was split by role (deployment wiring only) and the app-owned
+  `/app/data/.env` was aligned, so the Settings UI's saved values are the effective ones; the model
+  moved to `qwen2.5-7b-128k:latest` (51 keys, one value changed). Backups in `/root/backups/`.
 - Not chosen: writing a `FORK.md` — there is no fork delta to explain yet (the file is expected once
   this fork carries its own changes).
 
@@ -137,9 +140,13 @@ feature may make this component redundant.
    (e.g. fixing the model config, or a feature Paperless-ngx's own AI won't cover) or a local image build.
 2. Do we build and run our own image (`Dockerfile` here) instead of `clusterzx/paperless-ai:latest`? That
    is the only way a change in this repo reaches `paperless-ai.home`.
-3. Fix the `qwen3:8b` vs available-models mismatch — pull the model, or correct the stack `.env`?
-4. Do the two `.env` files get consolidated? The precedence (stack `.env` > `/app/data/.env`) is a trap
-   for anyone editing the file the app writes.
+3. ~~Fix the `qwen3:8b` vs available-models mismatch~~ — settled 2026-10-16: the stack `.env` no longer
+   carries an app setting, and the effective model is `qwen2.5-7b-128k:latest`, proven to serve at the
+   ollama layer.
+4. The two `.env` files no longer overlap on app settings (stack = wiring, app file = settings). What
+   remains open is the app-side hardening: a startup conflict report and a model-availability check —
+   planned at `/appdata/A--docker_stacks/.hermes/plans/2026-10-16_195403-paperless-ai-config-precedence-and-model-check.md`,
+   awaiting Ron's decisions before any code.
 
 ## Checks worth running
 
